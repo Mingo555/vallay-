@@ -178,6 +178,19 @@ textarea{width:100%;min-height:200px;font:13px/1.5 monospace;border:1px solid va
         <a class="btn line" id="lineShare" target="_blank" rel="noopener">LINEで送る</a>
         <span id="copiedSched" class="note"></span>
       </div>
+      <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <button class="btn primary" id="btnMakeImg">画像を作る</button>
+        <span class="note">表の形の画像を作ります（6年の部のチェックも反映）</span>
+      </div>
+      <div id="imgOut" hidden style="margin-top:10px">
+        <div class="row" style="margin-bottom:8px">
+          <button class="btn line" id="btnShareImg">LINEなどで共有</button>
+          <a class="btn" id="dlImg" download="試合表.png">画像を保存</a>
+          <span id="imgMsg" class="note"></span>
+        </div>
+        <p class="note" style="margin:0 0 6px">共有ボタンが使えないときは、下の画像を長押しして保存し、LINEで送ってください。</p>
+        <img id="schedImg" alt="試合表の画像" style="width:100%;border:1px solid var(--line);border-radius:6px;background:#fff">
+      </div>
     </div>
 
     <details class="card noprint">
@@ -620,6 +633,98 @@ function renderSummary(){
 }
 
 /* ---------- LINE送信用の試合表 ---------- */
+// コート・試合番号ごとの表示内容（文章・画像で共通）
+function cellInfo(court, slot, inc6){
+  const m = ALL.find(x => x.court === court && x.slot === slot);
+  if(m){
+    const s = matchSides(m), nm = x => x.name || x.label;
+    return { kind: m.block ? '5' : 'final', tag: m.block ? `5年 ${m.block}ブロック` : `5年 決勝 ${m.label.replace(' 決勝', '')}${m.id === 'C8' ? '（決勝）' : ''}`,
+      main: `${nm(s.h)} － ${nm(s.a)}`, ref: nm(s.ref) };
+  }
+  const x = SIX.find(x => x.court === court && x.slot === slot);
+  if(!x) return null;
+  if(!inc6) return { kind:'6x', tag:'', main:'6年の部', ref:'' };
+  const blk = x.h ? Object.keys(BLOCKS6).find(b => BLOCKS6[b].includes(x.h)) : '';
+  return { kind:'6', tag: blk ? `6年 ${blk}ブロック` : '6年 決勝T',
+    main: x.text ? x.text.replace('決勝T ', '') : `${disp6(x.h)} － ${disp6(x.a)}`,
+    ref: typeof x.ref === 'number' ? disp6(x.ref) : x.ref };
+}
+
+function drawScheduleImage(inc6){
+  const courts = inc6 ? COURTS : COURTS.filter(c => c[0] !== 'B');
+  const W = 1200, P = 40, slotW = 110, colW = (W - 2*P - slotW) / courts.length, rowH = 124, headRowH = 56;
+  const groups = [['5年', BLOCKS, disp]];
+  if(inc6) groups.push(['6年', BLOCKS6, disp6]);
+  const blockLines = groups.reduce((n, g) => n + Object.keys(g[1]).length, 0);
+  const tableTop = P + 70 + blockLines * 46 + 24;
+  const H = tableTop + headRowH + 8 * rowH + 70;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  const FONT = '"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","Meiryo",sans-serif';
+  const font = (size, bold) => ctx.font = `${bold ? 'bold ' : ''}${size}px ${FONT}`;
+  const fit = (text, x, y, maxW, size, bold, align = 'center') => {
+    let s = size;
+    font(s, bold);
+    while(ctx.measureText(text).width > maxW && s > 14){ s--; font(s, bold); }
+    ctx.textAlign = align; ctx.fillText(text, x, y);
+  };
+  const C = { ink:'#1d2330', muted:'#6b7385', line:'#9aa1b0', c5:'#fff1e8', cf:'#ffd8c2', c6:'#eef3fb', c6x:'#f1f3f5', accent:'#d9480f', head:'#e9ecf1' };
+
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  ctx.textBaseline = 'middle'; ctx.fillStyle = C.ink;
+  fit(inc6 ? '試合表（5年・6年の部）' : '5年の部 試合表', P, P + 24, W - 2*P, 40, true, 'left');
+
+  // 組み合わせ
+  let y = P + 70;
+  groups.forEach(([div, blocks, dsp]) => Object.entries(blocks).forEach(([b, keys]) => {
+    ctx.fillStyle = div === '5年' ? C.accent : '#1971c2';
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(P, y, 150, 36, 6) : ctx.rect(P, y, 150, 36); ctx.fill();
+    ctx.fillStyle = '#fff'; fit(`${div} ${b}ブロック`, P + 75, y + 18, 140, 20, true);
+    ctx.fillStyle = C.ink; fit(keys.map(dsp).join('　'), P + 166, y + 18, W - 2*P - 166, 24, true, 'left');
+    y += 46;
+  }));
+
+  // 試合順の表
+  const x0 = P, y0 = tableTop;
+  ctx.fillStyle = C.head; ctx.fillRect(x0, y0, W - 2*P, headRowH);
+  ctx.fillStyle = C.ink;
+  courts.forEach(([, label], i) => fit(label, x0 + slotW + colW * i + colW / 2, y0 + headRowH / 2, colW - 16, 24, true));
+  for(let r = 0; r < 8; r++){
+    const slot = r + 1, ry = y0 + headRowH + r * rowH;
+    ctx.fillStyle = C.ink; fit(`第${slot}試合`, x0 + slotW / 2, ry + rowH / 2, slotW - 10, 22, true);
+    courts.forEach(([court], i) => {
+      const cx = x0 + slotW + colW * i, info = cellInfo(court, slot, inc6);
+      if(!info){ ctx.fillStyle = C.muted; fit('―', cx + colW / 2, ry + rowH / 2, colW, 22); return; }
+      ctx.fillStyle = { '5':C.c5, final:C.cf, '6':C.c6, '6x':C.c6x }[info.kind];
+      ctx.fillRect(cx, ry, colW, rowH);
+      if(info.kind === '6x'){ ctx.fillStyle = C.muted; fit(info.main, cx + colW / 2, ry + rowH / 2, colW - 16, 20); return; }
+      ctx.fillStyle = info.kind === '6' ? '#1971c2' : C.accent; fit(info.tag, cx + colW / 2, ry + 26, colW - 16, 18, true);
+      ctx.fillStyle = C.ink; fit(info.main, cx + colW / 2, ry + 62, colW - 16, 26, true);
+      ctx.fillStyle = C.muted; fit(`審判 ${info.ref}`, cx + colW / 2, ry + 98, colW - 16, 19);
+    });
+  }
+  // 罫線
+  ctx.strokeStyle = C.line; ctx.lineWidth = 2;
+  const tableH = headRowH + 8 * rowH;
+  ctx.strokeRect(x0, y0, W - 2*P, tableH);
+  for(let r = 0; r <= 8; r++){ const ly = y0 + headRowH + r * rowH; ctx.beginPath(); ctx.moveTo(x0, ly); ctx.lineTo(W - P, ly); ctx.stroke(); }
+  [0, ...courts.map((_, i) => i)].forEach((_, i) => { const lx = x0 + slotW + colW * i; ctx.beginPath(); ctx.moveTo(lx, y0); ctx.lineTo(lx, y0 + tableH); ctx.stroke(); });
+
+  ctx.fillStyle = C.muted; fit('※試合順およびコートは、進行により変更の可能性あり', P, y0 + tableH + 34, W - 2*P, 20, false, 'left');
+  return cv;
+}
+let imgFile = null;
+function makeImage(){
+  const cv = drawScheduleImage(!!state.inc6);
+  const url = cv.toDataURL('image/png');
+  document.getElementById('schedImg').src = url;
+  document.getElementById('dlImg').href = url;
+  document.getElementById('imgOut').hidden = false;
+  imgFile = null;
+  cv.toBlob(b => { if(b) imgFile = new File([b], '試合表.png', { type:'image/png' }); }, 'image/png');
+}
+
 function scheduleText(inc6){
   const lines = [inc6 ? '【試合表（5年・6年の部）】' : '【5年の部 試合表】', '', '■ 5年の部 組み合わせ'];
   Object.entries(BLOCKS).forEach(([b, codes]) => lines.push(`${b}ブロック：${codes.map(disp).join('／')}`));
@@ -655,6 +760,7 @@ function renderSchedText(){
   const text = scheduleText(!!state.inc6);
   document.getElementById('schedText').value = text;
   document.getElementById('lineShare').href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
+  if(!document.getElementById('imgOut').hidden) makeImage();
 }
 
 function renderDerived(){
@@ -704,7 +810,16 @@ async function copyText(taId, msgId){
 }
 document.getElementById('btnCopy').onclick = () => copyText('summary', 'copied');
 document.getElementById('btnCopySched').onclick = () => copyText('schedText', 'copiedSched');
-document.getElementById('inc6').onchange = e => { state.inc6 = e.target.checked; save(); renderSchedText(); };
+document.getElementById('btnMakeImg').onclick = makeImage;
+document.getElementById('btnShareImg').onclick = async () => {
+  const msg = document.getElementById('imgMsg');
+  if(imgFile && navigator.canShare && navigator.canShare({ files:[imgFile] })){
+    try{ await navigator.share({ files:[imgFile], title:'試合表' }); msg.textContent = ''; }
+    catch(e){ if(e.name !== 'AbortError') msg.textContent = '共有できませんでした。画像を長押しして保存してください。'; }
+  } else msg.textContent = 'この画面では共有ボタンが使えません。画像を長押しして保存してください。';
+};
+if(window.self !== window.top) document.getElementById('dlImg').hidden = true;
+document.getElementById('inc6').onchange =e => { state.inc6 = e.target.checked; save(); renderSchedText(); };
 
 function renderAll(){ renderDraw(); renderSchedule(); renderDerived(); }
 renderAll();
