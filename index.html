@@ -9,18 +9,21 @@
   --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --muted:#6b7385; --line:#d5d9e2;
   --accent:#d9480f; --accent-soft:#fff1e8; --win:#1971c2; --win-soft:#e7f1fc;
   --warn:#c92a2a; --ok:#2b8a3e; --grey:#eceef2; --linegreen:#06c755;
+  --focus:#f59f00; --focus-soft:#fff3bf; --focus-ink:#3b2a00;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     --bg:#15181e; --card:#1f232b; --ink:#e7e9ee; --muted:#9aa1b0; --line:#363c48;
     --accent:#ff8a4c; --accent-soft:#3a2418; --win:#74b6ff; --win-soft:#1c2b3d;
     --warn:#ff6b6b; --ok:#69db7c; --grey:#2a2f38; color-scheme:dark;
+    --focus:#fcc419; --focus-soft:#3d3214;
   }
 }
 :root[data-theme="dark"]{
   --bg:#15181e; --card:#1f232b; --ink:#e7e9ee; --muted:#9aa1b0; --line:#363c48;
   --accent:#ff8a4c; --accent-soft:#3a2418; --win:#74b6ff; --win-soft:#1c2b3d;
   --warn:#ff6b6b; --ok:#69db7c; --grey:#2a2f38; color-scheme:dark;
+  --focus:#fcc419; --focus-soft:#3d3214;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -72,6 +75,13 @@ select,input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line
 .drawgrid.three{grid-template-columns:repeat(3,1fr)}
 .kana.six{background:var(--win-soft);color:var(--win)}
 .mc.final{border-color:var(--accent)}
+.mc.fplay{background:var(--focus-soft);border:2px solid var(--focus)}
+.mc.fref{border:2px dashed var(--focus)}
+.fbadge{display:inline-block;background:var(--focus);color:var(--focus-ink);font-size:11px;font-weight:bold;border-radius:4px;padding:0 6px;margin-left:4px}
+.fbadge:empty{display:none}
+tr.focus td.nm{background:var(--focus-soft);font-weight:bold}
+.focusbox{background:var(--focus-soft);border:2px solid var(--focus);border-radius:8px;padding:10px 12px;margin-bottom:12px}
+.focusbox ul{margin:4px 0 0;padding-left:20px}
 .mc.done{border-left:4px solid var(--ok)}
 .mtitle{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
 .mteams{display:grid;grid-template-columns:1fr auto auto 1fr;gap:4px 6px;align-items:center;margin:6px 0 2px}
@@ -171,7 +181,12 @@ textarea{width:100%;min-height:200px;font:13px/1.5 monospace;border:1px solid va
     <h2>試合表をLINEで送る</h2>
     <div class="card">
       <p class="note" style="margin-top:0">抽選の割り当てを入れると、試合表の文章が自動で作られます。「コピー」してLINEに貼るか、「LINEで送る」から送信先を選んでください。</p>
-      <label class="row" style="margin-bottom:6px"><input type="checkbox" id="inc6"> 6年の部の試合も入れる</label>
+      <div class="row" style="margin-bottom:6px">
+        <label for="focusSel">目立たせるチーム</label>
+        <select id="focusSel"></select>
+        <label><input type="checkbox" id="inc6"> 6年の部の試合も入れる</label>
+      </div>
+      <div id="focusBox"></div>
       <textarea id="schedText" readonly></textarea>
       <div class="row" style="margin-top:6px">
         <button class="btn primary" id="btnCopySched">コピー</button>
@@ -191,6 +206,16 @@ textarea{width:100%;min-height:200px;font:13px/1.5 monospace;border:1px solid va
         <p class="note" style="margin:0 0 6px">共有ボタンが使えないときは、下の画像を長押しして保存し、LINEで送ってください。</p>
         <img id="schedImg" alt="試合表の画像" style="width:100%;border:1px solid var(--line);border-radius:6px;background:#fff">
       </div>
+      <div class="row" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+        <button class="btn line" id="btnFlex">Flexメッセージで送る</button>
+        <span class="note">LINEのカード形式で送ります（目立たせるチームを色付け）</span>
+      </div>
+      <p id="flexMsg" class="note"></p>
+      <details class="note" id="liffSetup">
+        <summary>Flexメッセージを使うための設定（LIFF ID）</summary>
+        <p>Flexメッセージを送るには、LINE Developersで作ったLIFFアプリのIDが必要です。GitHub Pagesのページで使えます（claude.aiのページでは使えません）。</p>
+        <div class="row"><label for="liffInput">LIFF ID</label><input type="text" id="liffInput" placeholder="1234567890-AbcdEfgh"><button class="btn" id="btnLiffSave">保存</button></div>
+      </details>
     </div>
 
     <details class="card noprint">
@@ -309,7 +334,7 @@ function blank(){
   ALL.forEach(m => scores[m.id] = [['',''],['','']]);
   return { teams:[...DEFAULT_TEAMS], assign:Object.fromEntries(KANA.map(k=>[k,''])),
     teams6:[...DEFAULT_TEAMS6], assign6:Object.fromEntries(NUMS6.map(n=>[n, SEED6[n] || ''])),
-    scores, pick:{}, order:{} };
+    scores, pick:{}, order:{}, focus:'菊川', liffId:'' };
 }
 function load(){
   try{
@@ -438,6 +463,7 @@ function renderDrawDiv(d){
     const i = +inp.dataset.i, old = teams[i], v = inp.value.trim() || old;
     teams[i] = v;
     D.keys.forEach(k => { if(assign[k] === old) assign[k] = v; });
+    if(state.focus === old && !state[d === 5 ? 'teams6' : 'teams'].includes(old)) state.focus = v;
     save(); renderDrawDiv(d); afterAssign();
   });
 }
@@ -453,14 +479,14 @@ function markDups(){
       : `割り当て済み ${vals.length} / ${n}`;
   });
 }
-function afterAssign(){ markDups(); renderSchedule(); renderDerived(); }
+function afterAssign(){ markDups(); renderFocusSel(); renderSchedule(); renderDerived(); }
 
 /* ---------- 試合表 ---------- */
 function matchCard(m){
   const sc = state.scores[m.id];
   const title = m.block ? `${m.court}コート 5年 ${m.block}ブロック` : `${m.court}コート 5年 決勝 ${m.label}`;
   return `<div class="mc ${m.block ? '' : 'final'}" id="mc-${m.id}">
-    <div class="mtitle"><span>${title}</span><span class="ref">審判：<span id="ref-${m.id}"></span></span></div>
+    <div class="mtitle"><span>${title}<span class="fbadge" id="fb-${m.id}"></span></span><span class="ref">審判：<span id="ref-${m.id}"></span></span></div>
     <div class="mteams">
       <span class="tn h" id="nh-${m.id}"></span>
       <input inputmode="numeric" data-m="${m.id}" data-s="0" data-t="0" value="${esc(sc[0][0])}" aria-label="1セット目">
@@ -478,7 +504,8 @@ function sixCard(x){
   const blk = x.h ? Object.keys(BLOCKS6).find(b => BLOCKS6[b].includes(x.h)) : '';
   const ref = typeof x.ref === 'number' ? disp6(x.ref) : x.ref;
   const body = x.text ? esc(x.text) : `${esc(disp6(x.h))}　－　${esc(disp6(x.a))}`;
-  return `<div class="mc six"><div class="mtitle"><span>${x.court}コート 6年${blk ? ' ' + blk + 'ブロック' : ''}</span><span>審判：${esc(ref)}</span></div><div class="sixm">${body}</div></div>`;
+  const role = focusRole(cellInfo(x.court, x.slot, true));
+  return `<div class="mc six ${role ? 'f' + role : ''}"><div class="mtitle"><span>${x.court}コート 6年${blk ? ' ' + blk + 'ブロック' : ''}<span class="fbadge">${focusBadge(role)}</span></span><span>審判：${esc(ref)}</span></div><div class="sixm">${body}</div></div>`;
 }
 function renderSchedule(){
   const el = document.getElementById('schedule');
@@ -508,7 +535,11 @@ function renderMatchStatus(m){
   nh.className = 'tn h' + (r.done && r.winner ? (r.winner === 'h' ? ' w' : ' l') : '');
   na.className = 'tn' + (r.done && r.winner ? (r.winner === 'a' ? ' w' : ' l') : '');
   document.getElementById('ref-' + m.id).textContent = s.ref.name || s.ref.label;
-  document.getElementById('mc-' + m.id).classList.toggle('done', !!(r.done && r.winner));
+  const card = document.getElementById('mc-' + m.id), role = focusRole(cellInfo(m.court, m.slot, true));
+  card.classList.toggle('done', !!(r.done && r.winner));
+  card.classList.toggle('fplay', role === 'play');
+  card.classList.toggle('fref', role === 'ref');
+  document.getElementById('fb-' + m.id).textContent = focusBadge(role);
 
   let html = '';
   if(r.warns.length) html += `<div class="warn">⚠ ${[...new Set(r.warns)].join('／')}</div>`;
@@ -545,7 +576,8 @@ function renderTable(b){
   let html = `<div class="tblwrap"><table class="st"><tr><th class="nm">チーム名</th>${codes.map(c => `<th>${esc(disp(c))}</th>`).join('')}<th>勝敗</th><th>セット差</th><th>得失点差</th><th>順位</th></tr>`;
   codes.forEach(c => {
     const r = st.rows[c], adv = st.complete && !st.unresolved && r.rank <= 2;
-    html += `<tr class="${adv ? 'adv' : ''}"><td class="nm">${esc(disp(c))}</td>${codes.map(o => cell(c, o)).join('')}
+    const foc = state.focus && teamName(c) === state.focus;
+    html += `<tr class="${adv ? 'adv' : ''} ${foc ? 'focus' : ''}"><td class="nm">${foc ? '★ ' : ''}${esc(disp(c))}</td>${codes.map(o => cell(c, o)).join('')}
       <td>${r.w} - ${r.l}</td>
       <td>${r.sf} - ${r.sa} = ${sign(r.sf - r.sa)}</td>
       <td>${r.pf} - ${r.pa} = ${sign(r.pf - r.pa)}</td>
@@ -635,30 +667,69 @@ function renderSummary(){
 }
 
 /* ---------- LINE送信用の試合表 ---------- */
-// コート・試合番号ごとの表示内容（文章・画像で共通）
+// コート・試合番号ごとの表示内容（文章・画像・Flexで共通）
+// parts: 対戦カードの文字列を部品に分けたもの（team付きはチーム名。目立たせる色付けに使う）
 function cellInfo(court, slot, inc6){
   const m = ALL.find(x => x.court === court && x.slot === slot);
   if(m){
     const s = matchSides(m), nm = x => x.name || x.label;
-    return { kind: m.block ? '5' : 'final', tag: m.block ? `5年 ${m.block}ブロック` : `5年 決勝 ${m.label.replace(' 決勝', '')}${m.id === 'C8' ? '（決勝）' : ''}`,
-      main: `${nm(s.h)} － ${nm(s.a)}`, ref: nm(s.ref) };
+    const raw = x => m.block ? teamName(x.code) : x.name;
+    const parts = [{ t:nm(s.h), team:raw(s.h) }, { t:' － ' }, { t:nm(s.a), team:raw(s.a) }];
+    return { kind: m.block ? '5' : 'final', court, slot,
+      tag: m.block ? `5年 ${m.block}ブロック` : `5年 決勝 ${m.label.replace(' 決勝', '')}${m.id === 'C8' ? '（決勝）' : ''}`,
+      parts, main: parts.map(p => p.t).join(''), ref: nm(s.ref),
+      play: [raw(s.h), raw(s.a)].filter(Boolean),
+      refs: m.block ? [teamName(m.ref)].filter(Boolean) : (s.ref.name ? s.ref.name.split('・') : []) };
   }
   const x = SIX.find(x => x.court === court && x.slot === slot);
   if(!x) return null;
-  if(!inc6) return { kind:'6x', tag:'', main:'6年の部', ref:'' };
+  if(!inc6) return { kind:'6x', court, slot, tag:'', parts:[{ t:'6年の部' }], main:'6年の部', ref:'', play:[], refs:[] };
   const blk = x.h ? Object.keys(BLOCKS6).find(b => BLOCKS6[b].includes(x.h)) : '';
-  return { kind:'6', tag: blk ? `6年 ${blk}ブロック` : '6年 決勝T',
-    main: x.text ? x.text.replace('決勝T ', '') : `${disp6(x.h)} － ${disp6(x.a)}`,
-    ref: typeof x.ref === 'number' ? disp6(x.ref) : x.ref };
+  const parts = x.text ? [{ t:x.text.replace('決勝T ', '') }]
+    : [{ t:disp6(x.h), team:state.assign6[x.h] }, { t:' － ' }, { t:disp6(x.a), team:state.assign6[x.a] }];
+  return { kind:'6', court, slot, tag: blk ? `6年 ${blk}ブロック` : '6年 決勝T',
+    parts, main: parts.map(p => p.t).join(''),
+    ref: typeof x.ref === 'number' ? disp6(x.ref) : x.ref,
+    play: x.text ? [] : [state.assign6[x.h], state.assign6[x.a]].filter(Boolean),
+    refs: typeof x.ref === 'number' && state.assign6[x.ref] ? [state.assign6[x.ref]] : [] };
+}
+// 目立たせるチームがその枠で「試合」か「審判」か
+function focusRole(info){
+  const F = state.focus;
+  if(!F || !info) return null;
+  if(info.play.includes(F)) return 'play';
+  if(info.refs.includes(F)) return 'ref';
+  return null;
+}
+const focusBadge = role => role === 'play' ? `★${state.focus} 試合` : role === 'ref' ? `★${state.focus} 審判` : '';
+function focusItems(inc6){
+  const items = [];
+  for(let slot = 1; slot <= 8; slot++) COURTS.forEach(([court]) => {
+    const info = cellInfo(court, slot, inc6), role = focusRole(info);
+    if(role) items.push({ ...info, role });
+  });
+  return items;
+}
+const focusLine = it => `第${it.slot}試合 ${it.court}コート【${it.role === 'play' ? '試合' : '審判'}】${it.tag}　${it.main}`;
+function renderFocusBox(){
+  const F = state.focus, el = document.getElementById('focusBox');
+  if(!F){ el.innerHTML = ''; return; }
+  const items = focusItems(!!state.inc6);
+  el.innerHTML = `<div class="focusbox"><b>★ ${esc(F)}の予定</b>${items.length
+    ? `<ul>${items.map(it => `<li>${esc(focusLine(it))}</li>`).join('')}</ul>`
+    : `<div class="note">抽選の割り当てに${esc(F)}が入ると、試合と審判の予定がここに出ます。</div>`}</div>`;
 }
 
 function drawScheduleImage(inc6){
   const courts = inc6 ? COURTS : COURTS.filter(c => c[0] !== 'B');
   const W = 1200, P = 40, slotW = 110, colW = (W - 2*P - slotW) / courts.length, rowH = 124, headRowH = 56;
-  const groups = [['5年', BLOCKS, disp]];
-  if(inc6) groups.push(['6年', BLOCKS6, disp6]);
+  const F = state.focus, items = F ? focusItems(inc6) : [];
+  const groups = [['5年', BLOCKS, disp, k => teamName(k)]];
+  if(inc6) groups.push(['6年', BLOCKS6, disp6, n => state.assign6[n]]);
   const blockLines = groups.reduce((n, g) => n + Object.keys(g[1]).length, 0);
-  const tableTop = P + 70 + blockLines * 46 + 24;
+  const focusTop = P + 70 + blockLines * 46 + 10;
+  const focusH = items.length ? 58 + items.length * 38 : 0;
+  const tableTop = focusTop + focusH + (items.length ? 24 : 14);
   const H = tableTop + headRowH + 8 * rowH + 70;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
@@ -671,24 +742,44 @@ function drawScheduleImage(inc6){
     while(ctx.measureText(text).width > maxW && s > 14){ s--; font(s, bold); }
     ctx.textAlign = align; ctx.fillText(text, x, y);
   };
-  const C = { ink:'#1d2330', muted:'#6b7385', line:'#9aa1b0', c5:'#fff1e8', cf:'#ffd8c2', c6:'#eef3fb', c6x:'#f1f3f5', accent:'#d9480f', head:'#e9ecf1' };
+  const rrect = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); };
+  const C = { ink:'#1d2330', muted:'#6b7385', line:'#9aa1b0', c5:'#fff1e8', cf:'#ffd8c2', c6:'#eef3fb', c6x:'#f1f3f5',
+    accent:'#d9480f', blue:'#1971c2', head:'#e9ecf1', focus:'#f59f00', focusSoft:'#fff3bf', focusInk:'#e8590c' };
 
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
   ctx.textBaseline = 'middle'; ctx.fillStyle = C.ink;
   fit(inc6 ? '試合表（5年・6年の部）' : '5年の部 試合表', P, P + 24, W - 2*P, 40, true, 'left');
 
-  // 組み合わせ
+  // 組み合わせ（目立たせるチームは黄色のマーカー）
   let y = P + 70;
-  groups.forEach(([div, blocks, dsp]) => Object.entries(blocks).forEach(([b, keys]) => {
-    ctx.fillStyle = div === '5年' ? C.accent : '#1971c2';
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(P, y, 150, 36, 6) : ctx.rect(P, y, 150, 36); ctx.fill();
+  groups.forEach(([div, blocks, dsp, raw]) => Object.entries(blocks).forEach(([b, keys]) => {
+    ctx.fillStyle = div === '5年' ? C.accent : C.blue;
+    rrect(P, y, 150, 36, 6); ctx.fill();
     ctx.fillStyle = '#fff'; fit(`${div} ${b}ブロック`, P + 75, y + 18, 140, 20, true);
-    ctx.fillStyle = C.ink; fit(keys.map(dsp).join('　'), P + 166, y + 18, W - 2*P - 166, 24, true, 'left');
+    let x = P + 166;
+    font(24, true); ctx.textAlign = 'left';
+    keys.forEach(k => {
+      const t = dsp(k), w = ctx.measureText(t).width, foc = F && raw(k) === F;
+      if(foc){ ctx.fillStyle = C.focus; rrect(x - 6, y + 1, w + 12, 34, 6); ctx.fill(); }
+      ctx.fillStyle = C.ink; ctx.fillText(t, x, y + 18);
+      x += w + 34;
+    });
     y += 46;
   }));
 
+  // 目立たせるチームの予定
+  if(items.length){
+    ctx.fillStyle = C.focusSoft; rrect(P, focusTop, W - 2*P, focusH, 10); ctx.fill();
+    ctx.strokeStyle = C.focus; ctx.lineWidth = 3; ctx.stroke();
+    ctx.fillStyle = C.focusInk; fit(`★ ${F}の予定`, P + 20, focusTop + 30, W - 2*P - 40, 26, true, 'left');
+    items.forEach((it, i) => {
+      ctx.fillStyle = C.ink;
+      fit(focusLine(it), P + 20, focusTop + 70 + i * 38, W - 2*P - 40, 22, it.role === 'play', 'left');
+    });
+  }
+
   // 試合順の表
-  const x0 = P, y0 = tableTop;
+  const x0 = P, y0 = tableTop, focusCells = [];
   ctx.fillStyle = C.head; ctx.fillRect(x0, y0, W - 2*P, headRowH);
   ctx.fillStyle = C.ink;
   courts.forEach(([, label], i) => fit(label, x0 + slotW + colW * i + colW / 2, y0 + headRowH / 2, colW - 16, 24, true));
@@ -696,14 +787,17 @@ function drawScheduleImage(inc6){
     const slot = r + 1, ry = y0 + headRowH + r * rowH;
     ctx.fillStyle = C.ink; fit(`第${slot}試合`, x0 + slotW / 2, ry + rowH / 2, slotW - 10, 22, true);
     courts.forEach(([court], i) => {
-      const cx = x0 + slotW + colW * i, info = cellInfo(court, slot, inc6);
+      const cx = x0 + slotW + colW * i, info = cellInfo(court, slot, inc6), role = focusRole(info);
       if(!info){ ctx.fillStyle = C.muted; fit('―', cx + colW / 2, ry + rowH / 2, colW, 22); return; }
-      ctx.fillStyle = { '5':C.c5, final:C.cf, '6':C.c6, '6x':C.c6x }[info.kind];
+      ctx.fillStyle = role === 'play' ? C.focusSoft : { '5':C.c5, final:C.cf, '6':C.c6, '6x':C.c6x }[info.kind];
       ctx.fillRect(cx, ry, colW, rowH);
+      if(role) focusCells.push([cx, ry, role]);
       if(info.kind === '6x'){ ctx.fillStyle = C.muted; fit(info.main, cx + colW / 2, ry + rowH / 2, colW - 16, 20); return; }
-      ctx.fillStyle = info.kind === '6' ? '#1971c2' : C.accent; fit(info.tag, cx + colW / 2, ry + 26, colW - 16, 18, true);
+      ctx.fillStyle = info.kind === '6' ? C.blue : C.accent;
+      fit((role ? '★ ' : '') + info.tag, cx + colW / 2, ry + 26, colW - 16, 18, true);
       ctx.fillStyle = C.ink; fit(info.main, cx + colW / 2, ry + 62, colW - 16, 26, true);
-      ctx.fillStyle = C.muted; fit(`審判 ${info.ref}`, cx + colW / 2, ry + 98, colW - 16, 19);
+      ctx.fillStyle = role === 'ref' ? C.focusInk : C.muted;
+      fit(`審判 ${info.ref}`, cx + colW / 2, ry + 98, colW - 16, 19, role === 'ref');
     });
   }
   // 罫線
@@ -711,7 +805,14 @@ function drawScheduleImage(inc6){
   const tableH = headRowH + 8 * rowH;
   ctx.strokeRect(x0, y0, W - 2*P, tableH);
   for(let r = 0; r <= 8; r++){ const ly = y0 + headRowH + r * rowH; ctx.beginPath(); ctx.moveTo(x0, ly); ctx.lineTo(W - P, ly); ctx.stroke(); }
-  [0, ...courts.map((_, i) => i)].forEach((_, i) => { const lx = x0 + slotW + colW * i; ctx.beginPath(); ctx.moveTo(lx, y0); ctx.lineTo(lx, y0 + tableH); ctx.stroke(); });
+  for(let i = 0; i <= courts.length; i++){ const lx = x0 + slotW + colW * i; ctx.beginPath(); ctx.moveTo(lx, y0); ctx.lineTo(lx, y0 + tableH); ctx.stroke(); }
+  // 目立たせるチームの枠（試合は実線、審判は点線）
+  ctx.strokeStyle = C.focus; ctx.lineWidth = 6;
+  focusCells.forEach(([cx, ry, role]) => {
+    ctx.setLineDash(role === 'ref' ? [12, 8] : []);
+    ctx.strokeRect(cx + 3, ry + 3, colW - 6, rowH - 6);
+  });
+  ctx.setLineDash([]);
 
   ctx.fillStyle = C.muted; fit('※試合順およびコートは、進行により変更の可能性あり', P, y0 + tableH + 34, W - 2*P, 20, false, 'left');
   return cv;
@@ -728,37 +829,122 @@ function makeImage(){
 }
 
 function scheduleText(inc6){
-  const lines = [inc6 ? '【試合表（5年・6年の部）】' : '【5年の部 試合表】', '', '■ 5年の部 組み合わせ'];
-  Object.entries(BLOCKS).forEach(([b, codes]) => lines.push(`${b}ブロック：${codes.map(disp).join('／')}`));
+  const F = state.focus;
+  const lines = [inc6 ? '【試合表（5年・6年の部）】' : '【5年の部 試合表】'];
+  const items = F ? focusItems(inc6) : [];
+  if(items.length) lines.push('', `★ ${F}の予定`, ...items.map(it => '・' + focusLine(it)));
+  lines.push('', '■ 5年の部 組み合わせ');
+  Object.entries(BLOCKS).forEach(([b, codes]) => lines.push(`${b}ブロック：${codes.map(c => (F && teamName(c) === F ? '★' : '') + disp(c)).join('／')}`));
   if(inc6){
     lines.push('', '■ 6年の部 組み合わせ');
-    Object.entries(BLOCKS6).forEach(([b, nums]) => lines.push(`${b}ブロック：${nums.map(disp6).join('／')}`));
+    Object.entries(BLOCKS6).forEach(([b, nums]) => lines.push(`${b}ブロック：${nums.map(n => (F && state.assign6[n] === F ? '★' : '') + disp6(n)).join('／')}`));
   }
   lines.push('', '■ 試合順');
   for(let slot = 1; slot <= 8; slot++){
     const rows = [];
     COURTS.forEach(([court]) => {
-      const m = ALL.find(x => x.court === court && x.slot === slot);
-      if(m){
-        const s = matchSides(m), nm = x => x.name || x.label;
-        const tag = m.block ? `5年${m.block}` : `5年決勝 ${m.label.replace(' 決勝', '')}`;
-        rows.push(`${court}：[${tag}] ${nm(s.h)} － ${nm(s.a)}（審判 ${nm(s.ref)}）`);
-        return;
-      }
-      const x = inc6 && SIX.find(x => x.court === court && x.slot === slot);
-      if(x){
-        const ref = typeof x.ref === 'number' ? disp6(x.ref) : x.ref;
-        rows.push(`${court}：[6年] ${x.text || disp6(x.h) + ' － ' + disp6(x.a)}（審判 ${ref}）`);
-      }
+      const info = cellInfo(court, slot, inc6);
+      if(!info || info.kind === '6x') return;
+      rows.push(`${focusRole(info) ? '★' : ''}${court}：[${info.tag}] ${info.main}（審判 ${info.ref}）`);
     });
     if(rows.length) lines.push(`第${slot}試合`, ...rows);
   }
   lines.push('', '※試合順およびコートは、進行により変更の可能性あり');
   return lines.join('\n');
 }
+
+/* ---------- LINE Flexメッセージ ---------- */
+function flexMessage(inc6){
+  const F = state.focus, items = F ? focusItems(inc6) : [];
+  const ORANGE = '#d9480f', BLUE = '#1971c2', FOCUS = '#e8590c', SOFT = '#fff3bf';
+  const txt = (text, o = {}) => ({ type:'text', text: text || ' ', wrap:true, size:'sm', ...o });
+  const spans = parts => parts.filter(p => p.t).map(p => p.team && p.team === F
+    ? { type:'span', text:'★' + p.t, weight:'bold', color:FOCUS } : { type:'span', text:p.t });
+  const body = [];
+
+  if(items.length){
+    body.push({ type:'box', layout:'vertical', backgroundColor:SOFT, cornerRadius:'8px', paddingAll:'12px', spacing:'xs',
+      contents:[ txt(`★ ${F}の予定`, { weight:'bold', color:FOCUS, size:'md' }),
+        ...items.map(it => txt(`第${it.slot}試合 ${it.court}コート【${it.role === 'play' ? '試合' : '審判'}】\n${it.tag}　${it.main}`, { size:'xs', ...(it.role === 'play' ? { weight:'bold' } : {}) })) ] });
+  }
+
+  const combo = [['5年', BLOCKS, disp, k => teamName(k), ORANGE]];
+  if(inc6) combo.push(['6年', BLOCKS6, disp6, n => state.assign6[n], BLUE]);
+  body.push(txt('組み合わせ', { weight:'bold', size:'md' }));
+  combo.forEach(([div, blocks, dsp, raw, color]) => Object.entries(blocks).forEach(([b, keys]) => {
+    body.push({ type:'box', layout:'horizontal', spacing:'sm', contents:[
+      txt(`${div}${b}`, { flex:0, weight:'bold', color, size:'xs' }),
+      { type:'text', wrap:true, size:'xs', flex:1, text: keys.map(dsp).join('　'),
+        contents: keys.flatMap((k, i) => [...(i ? [{ type:'span', text:'　' }] : []), ...spans([{ t:dsp(k), team:raw(k) }])]) } ] });
+  }));
+
+  body.push({ type:'separator', margin:'md' }, txt('試合順', { weight:'bold', size:'md', margin:'md' }));
+  for(let slot = 1; slot <= 8; slot++){
+    const rows = [];
+    COURTS.forEach(([court]) => {
+      const info = cellInfo(court, slot, inc6);
+      if(!info || info.kind === '6x') return;
+      const role = focusRole(info);
+      rows.push({ type:'box', layout:'horizontal', spacing:'sm', paddingAll:'6px', cornerRadius:'6px',
+        ...(role === 'play' ? { backgroundColor:SOFT } : {}),
+        contents:[
+          txt(court, { flex:0, weight:'bold', color: info.kind === '6' ? BLUE : ORANGE }),
+          { type:'box', layout:'vertical', flex:1, contents:[
+            { type:'text', wrap:true, size:'sm', text:info.main, contents:spans(info.parts) },
+            txt(`${info.tag}／審判 ${info.ref}`, { size:'xxs', color: role === 'ref' ? FOCUS : '#888888', ...(role === 'ref' ? { weight:'bold' } : {}) }) ] } ] });
+    });
+    if(rows.length) body.push(txt(`第${slot}試合`, { weight:'bold', size:'xs', color:'#666666', margin:'md' }), ...rows);
+  }
+
+  const bubble = { type:'bubble', size:'giga',
+    header:{ type:'box', layout:'vertical', backgroundColor:ORANGE, paddingAll:'14px', contents:[
+      txt(inc6 ? '試合表（5年・6年の部）' : '5年の部 試合表', { color:'#ffffff', weight:'bold', size:'lg' }),
+      txt('※試合順およびコートは、進行により変更の可能性あり', { color:'#ffe8d9', size:'xxs' }) ] },
+    body:{ type:'box', layout:'vertical', spacing:'sm', contents:body } };
+  if(/^https:/.test(location.href)) bubble.footer = { type:'box', layout:'vertical', contents:[
+    { type:'button', style:'link', height:'sm', action:{ type:'uri', label:'試合管理アプリを開く', uri: location.href.split(/[?#]/)[0] } } ] };
+  return { type:'flex', altText: inc6 ? '試合表（5年・6年の部）' : '5年の部 試合表', contents:bubble };
+}
+
+// LIFF（LINEのWebアプリ）経由でFlexメッセージを送る
+let liffReady = null;
+function liffId(){ return (state.liffId || '').trim(); }
+function initLiff(){
+  if(liffReady) return liffReady;
+  liffReady = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://static.line-scdn.net/liff/edge/2/sdk.js';
+    s.onload = () => liff.init({ liffId: liffId() }).then(resolve, reject);
+    s.onerror = () => reject(new Error('LINEの部品を読み込めませんでした'));
+    document.head.appendChild(s);
+  }).catch(e => { liffReady = null; throw e; });
+  return liffReady;
+}
+async function sendFlex(){
+  const msg = document.getElementById('flexMsg');
+  if(window.self !== window.top){ msg.textContent = 'claude.aiのページではFlexメッセージを送れません。GitHub Pagesのページで開いてください。'; return; }
+  if(!liffId()){ msg.textContent = '先に下の「Flexメッセージを使うための設定」でLIFF IDを保存してください。'; document.getElementById('liffSetup').open = true; return; }
+  try{
+    msg.textContent = 'LINEに接続しています…';
+    await initLiff();
+    if(!liff.isLoggedIn()){ msg.textContent = 'LINEにログインします。戻ってきたら、もう一度「Flexメッセージで送る」を押してください。'; liff.login({ redirectUri: location.href.split('#')[0] }); return; }
+    if(!liff.isApiAvailable('shareTargetPicker')){ msg.textContent = 'このLIFFアプリでは送信先の選択（shareTargetPicker）が有効になっていません。LINE Developersの設定を確認してください。'; return; }
+    const res = await liff.shareTargetPicker([flexMessage(!!state.inc6)], { isMultiple:true });
+    msg.textContent = res ? '送信しました。' : '送信をキャンセルしました。';
+  }catch(e){
+    msg.textContent = '送信できませんでした：' + (e && e.message ? e.message : e);
+  }
+}
+
+function renderFocusSel(){
+  const sel = document.getElementById('focusSel');
+  const names = [...new Set([...state.teams, ...state.teams6])];
+  sel.innerHTML = `<option value="">なし</option>` + names.map(t => `<option ${state.focus === t ? 'selected' : ''}>${esc(t)}</option>`).join('');
+}
 function renderSchedText(){
   const inc6 = document.getElementById('inc6');
   inc6.checked = !!state.inc6;
+  renderFocusBox();
   const text = scheduleText(!!state.inc6);
   document.getElementById('schedText').value = text;
   document.getElementById('lineShare').href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
@@ -823,7 +1009,17 @@ document.getElementById('btnShareImg').onclick = async () => {
 if(window.self !== window.top) document.getElementById('dlImg').hidden = true;
 document.getElementById('inc6').onchange =e => { state.inc6 = e.target.checked; save(); renderSchedText(); };
 
-function renderAll(){ renderDraw(); renderSchedule(); renderDerived(); }
+document.getElementById('focusSel').onchange = e => { state.focus = e.target.value; save(); renderSchedule(); renderDerived(); };
+document.getElementById('btnFlex').onclick = sendFlex;
+document.getElementById('liffInput').value = state.liffId || '';
+document.getElementById('btnLiffSave').onclick = () => {
+  state.liffId = document.getElementById('liffInput').value.trim(); save(); liffReady = null;
+  document.getElementById('flexMsg').textContent = state.liffId ? 'LIFF IDを保存しました。' : 'LIFF IDを消去しました。';
+};
+// LINEログインから戻ってきたときはLIFFを初期化してログイン状態を受け取る
+if(liffId() && window.self === window.top && /[?&](code|liff\.state)=/.test(location.search)) initLiff().catch(() => {});
+
+function renderAll(){ renderDraw(); renderFocusSel(); renderSchedule(); renderDerived(); }
 renderAll();
 </script>
 </body>
