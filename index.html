@@ -425,10 +425,12 @@ function renderDrawDiv(d){
     <div class="drawblock"><h3>${b}ブロック</h3>
     ${keys.map(k => `<div class="drawrow"><span class="kana ${D.cls}">${D.label(k)}</span>
       <select data-k="${k}"><option value="">― 未定 ―</option>
-      ${teams.map(t => `<option ${assign[k] === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+      ${teams.filter(t => assign[k] === t || !D.keys.some(o => o != k && assign[o] === t))
+        .map(t => `<option ${assign[k] === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
       </select></div>`).join('')}
     </div>`).join('');
-  g.querySelectorAll('select').forEach(s => s.onchange = () => { assign[s.dataset.k] = s.value; save(); afterAssign(); });
+  // 選んだチームを他の番号の選択肢から外すため、選択のたびに作り直す
+  g.querySelectorAll('select').forEach(s => s.onchange = () => { assign[s.dataset.k] = s.value; save(); renderDrawDiv(d); afterAssign(); });
 
   const te = document.getElementById(D.edit);
   te.innerHTML = teams.map((t, i) => `<input type="text" data-i="${i}" value="${esc(t)}">`).join('');
