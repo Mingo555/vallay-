@@ -8,7 +8,7 @@
 :root{
   --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --muted:#6b7385; --line:#d5d9e2;
   --accent:#d9480f; --accent-soft:#fff1e8; --win:#1971c2; --win-soft:#e7f1fc;
-  --warn:#c92a2a; --ok:#2b8a3e; --grey:#eceef2;
+  --warn:#c92a2a; --ok:#2b8a3e; --grey:#eceef2; --linegreen:#06c755;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
@@ -45,6 +45,8 @@ h2:first-child{margin-top:0}
 .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.danger{color:var(--warn)}
+a.btn{text-decoration:none;display:inline-block}
+.btn.line{background:var(--linegreen);border-color:var(--linegreen);color:#fff;font-weight:bold}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 select,input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
 
@@ -164,6 +166,18 @@ textarea{width:100%;min-height:200px;font:13px/1.5 monospace;border:1px solid va
       <p class="note" style="margin-top:0">試合順に6年の部の試合が混ざるため、①〜⑨の割り当てだけ入力できます（6年の部の点数・順位は管理しません）。シード：①新南陽JVC・④櫛浜。</p>
       <div class="drawgrid three" id="drawgrid6"></div>
       <div class="row" style="margin-top:8px"><span id="drawstatus6" class="note"></span></div>
+    </div>
+
+    <h2>試合表をLINEで送る</h2>
+    <div class="card">
+      <p class="note" style="margin-top:0">抽選の割り当てを入れると、試合表の文章が自動で作られます。「コピー」してLINEに貼るか、「LINEで送る」から送信先を選んでください。</p>
+      <label class="row" style="margin-bottom:6px"><input type="checkbox" id="inc6"> 6年の部の試合も入れる</label>
+      <textarea id="schedText" readonly></textarea>
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="btnCopySched">コピー</button>
+        <a class="btn line" id="lineShare" target="_blank" rel="noopener">LINEで送る</a>
+        <span id="copiedSched" class="note"></span>
+      </div>
     </div>
 
     <details class="card noprint">
@@ -605,10 +619,48 @@ function renderSummary(){
   document.getElementById('summary').value = lines.join('\n');
 }
 
+/* ---------- LINE送信用の試合表 ---------- */
+function scheduleText(inc6){
+  const lines = [inc6 ? '【試合表（5年・6年の部）】' : '【5年の部 試合表】', '', '■ 5年の部 組み合わせ'];
+  Object.entries(BLOCKS).forEach(([b, codes]) => lines.push(`${b}ブロック：${codes.map(disp).join('／')}`));
+  if(inc6){
+    lines.push('', '■ 6年の部 組み合わせ');
+    Object.entries(BLOCKS6).forEach(([b, nums]) => lines.push(`${b}ブロック：${nums.map(disp6).join('／')}`));
+  }
+  lines.push('', '■ 試合順');
+  for(let slot = 1; slot <= 8; slot++){
+    const rows = [];
+    COURTS.forEach(([court]) => {
+      const m = ALL.find(x => x.court === court && x.slot === slot);
+      if(m){
+        const s = matchSides(m), nm = x => x.name || x.label;
+        const tag = m.block ? `5年${m.block}` : `5年決勝 ${m.label.replace(' 決勝', '')}`;
+        rows.push(`${court}：[${tag}] ${nm(s.h)} － ${nm(s.a)}（審判 ${nm(s.ref)}）`);
+        return;
+      }
+      const x = inc6 && SIX.find(x => x.court === court && x.slot === slot);
+      if(x){
+        const ref = typeof x.ref === 'number' ? disp6(x.ref) : x.ref;
+        rows.push(`${court}：[6年] ${x.text || disp6(x.h) + ' － ' + disp6(x.a)}（審判 ${ref}）`);
+      }
+    });
+    if(rows.length) lines.push(`第${slot}試合`, ...rows);
+  }
+  lines.push('', '※試合順およびコートは、進行により変更の可能性あり');
+  return lines.join('\n');
+}
+function renderSchedText(){
+  const inc6 = document.getElementById('inc6');
+  inc6.checked = !!state.inc6;
+  const text = scheduleText(!!state.inc6);
+  document.getElementById('schedText').value = text;
+  document.getElementById('lineShare').href = 'https://line.me/R/share?text=' + encodeURIComponent(text);
+}
+
 function renderDerived(){
   ALL.forEach(renderMatchStatus);
   renderTable('A'); renderTable('B');
-  renderBracket(); renderSummary();
+  renderBracket(); renderSummary(); renderSchedText();
 }
 
 /* ---------- イベント ---------- */
@@ -644,12 +696,15 @@ document.getElementById('btnReset').onclick = () => ask('抽選結果と全試�
 const btnPrint = document.getElementById('btnPrint');
 if(window.self !== window.top) btnPrint.hidden = true;
 btnPrint.onclick = () => window.print();
-document.getElementById('btnCopy').onclick = async () => {
-  const ta = document.getElementById('summary');
+async function copyText(taId, msgId){
+  const ta = document.getElementById(taId), msg = document.getElementById(msgId);
   try{ await navigator.clipboard.writeText(ta.value); }catch(e){ ta.select(); document.execCommand('copy'); }
-  document.getElementById('copied').textContent = 'コピーしました';
-  setTimeout(() => document.getElementById('copied').textContent = '', 2000);
-};
+  msg.textContent = 'コピーしました';
+  setTimeout(() => msg.textContent = '', 2000);
+}
+document.getElementById('btnCopy').onclick = () => copyText('summary', 'copied');
+document.getElementById('btnCopySched').onclick = () => copyText('schedText', 'copiedSched');
+document.getElementById('inc6').onchange = e => { state.inc6 = e.target.checked; save(); renderSchedText(); };
 
 function renderAll(){ renderDraw(); renderSchedule(); renderDerived(); }
 renderAll();
