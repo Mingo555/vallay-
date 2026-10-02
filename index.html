@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5年の部 試合管理</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --ink:#1d2330; --muted:#6b7385; --line:#d5d9e2;
+  --accent:#d9480f; --accent-soft:#fff1e8; --win:#1971c2; --win-soft:#e7f1fc;
+  --warn:#c92a2a; --ok:#2b8a3e; --grey:#eceef2;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15181e; --card:#1f232b; --ink:#e7e9ee; --muted:#9aa1b0; --line:#363c48;
+    --accent:#ff8a4c; --accent-soft:#3a2418; --win:#74b6ff; --win-soft:#1c2b3d;
+    --warn:#ff6b6b; --ok:#69db7c; --grey:#2a2f38; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15181e; --card:#1f232b; --ink:#e7e9ee; --muted:#9aa1b0; --line:#363c48;
+  --accent:#ff8a4c; --accent-soft:#3a2418; --win:#74b6ff; --win-soft:#1c2b3d;
+  --warn:#ff6b6b; --ok:#69db7c; --grey:#2a2f38; color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.dlgbox{background:var(--card);color:var(--ink);border-radius:10px;padding:16px;max-width:360px;width:100%}
+.dlgbox .row{justify-content:flex-end}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo",system-ui,sans-serif;font-size:15px;line-height:1.5}
+header{background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);z-index:10}
+.hwrap{max-width:1000px;margin:0 auto;padding:10px 16px 0}
+h1{font-size:18px;margin:0 0 8px}
+h1 small{font-weight:normal;color:var(--muted);font-size:13px;margin-left:8px}
+nav{display:flex;gap:4px;overflow-x:auto}
+nav button{border:0;background:none;padding:8px 14px;font:inherit;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:bold}
+main{max-width:1000px;margin:0 auto;padding:16px}
+section.panel{display:none}
+section.panel.on{display:block}
+h2{font-size:16px;margin:20px 0 8px;border-left:4px solid var(--accent);padding-left:8px}
+h2:first-child{margin-top:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px}
+.note{color:var(--muted);font-size:13px}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:7px 14px;font:inherit;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--warn)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+select,input[type=text]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)}
+
+/* 抽選 */
+.drawgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.drawblock h3{margin:0 0 8px;font-size:15px}
+.drawrow{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.kana{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-weight:bold;font-size:17px;flex:none}
+.drawrow select{flex:1;min-width:0}
+.drawrow select.dup{border-color:var(--warn);color:var(--warn)}
+.teamedit{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.teamedit input{width:100%}
+
+/* 試合表 */
+.sched{width:100%;border-collapse:collapse}
+.slot{display:grid;grid-template-columns:56px 1fr 1fr 1fr;gap:8px;margin-bottom:8px;align-items:stretch}
+.slothead{font-weight:bold;color:var(--muted);font-size:13px;display:flex;align-items:center}
+.colhead{font-weight:bold;text-align:center;font-size:14px}
+.mc{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.mc.other{background:var(--grey);color:var(--muted);font-size:13px;display:flex;align-items:center;justify-content:center;border-style:dashed}
+.mc.six{background:var(--grey);border-style:dashed;font-size:13px}
+.mc.six .sixm{font-weight:bold;margin-top:4px}
+.drawgrid.three{grid-template-columns:repeat(3,1fr)}
+.kana.six{background:var(--win-soft);color:var(--win)}
+.mc.final{border-color:var(--accent)}
+.mc.done{border-left:4px solid var(--ok)}
+.mtitle{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
+.mteams{display:grid;grid-template-columns:1fr auto auto 1fr;gap:4px 6px;align-items:center;margin:6px 0 2px}
+.mteams .tn{font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mteams .tn.h{text-align:right}
+.mteams .tn.w{color:var(--win)}
+.mteams .tn.l{opacity:.55}
+.mteams input{width:46px;text-align:center;font:inherit;font-size:16px;padding:4px 2px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--ink)}
+.mteams .sl{grid-column:1;text-align:right;font-size:11px;color:var(--muted)}
+.res{font-size:12px;margin-top:4px;min-height:18px}
+.res .w{color:var(--win);font-weight:bold}
+.res .warn{color:var(--warn)}
+.ref{font-size:12px;color:var(--muted)}
+
+/* 星取表 */
+.tblwrap{overflow-x:auto}
+table.st{border-collapse:collapse;width:100%;min-width:640px;background:var(--card)}
+table.st th,table.st td{border:1px solid var(--ink);padding:6px;text-align:center;font-size:13px;vertical-align:middle}
+table.st th{background:var(--grey);font-weight:bold}
+table.st td.nm,table.st th.nm{text-align:left;white-space:nowrap}
+table.st td.diag{background:linear-gradient(to top right,transparent calc(50% - .5px),var(--ink) 50%,transparent calc(50% + .5px))}
+.cellres{font-weight:bold;font-size:15px}
+.cellres.w{color:var(--win)}
+.cellsets{font-size:11px;color:var(--muted)}
+td.rank{font-size:18px;font-weight:bold}
+td.rank.adv{color:var(--accent)}
+tr.adv td.nm{font-weight:bold}
+.tiepick{margin-top:8px;font-size:13px}
+
+/* トーナメント */
+.bracket svg{width:100%;height:auto;max-width:760px;display:block;margin:0 auto}
+.bracket text{fill:var(--ink)}
+.bracket .ln{stroke:var(--line);stroke-width:2;fill:none}
+.bracket .ln.won{stroke:var(--accent);stroke-width:4}
+.podium{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.podium div{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center}
+.podium b{display:block;font-size:13px;color:var(--muted)}
+.podium span{font-size:18px;font-weight:bold}
+.podium .gold span{color:var(--accent)}
+
+textarea{width:100%;min-height:200px;font:13px/1.5 monospace;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--card);color:var(--ink)}
+
+@media (max-width:640px){
+  .drawgrid{grid-template-columns:1fr}
+  .teamedit{grid-template-columns:repeat(2,1fr)}
+  .drawgrid.three{grid-template-columns:1fr}
+  .slot{grid-template-columns:1fr}
+  .slot .colhead,.slot .slothead.empty{display:none}
+  .slot .slothead{padding-top:6px}
+  .mc.other.blank{display:none}
+}
+@media print{
+  header nav,.noprint{display:none!important}
+  header{position:static}
+  section.panel{display:block!important;break-after:page}
+  body{background:#fff;font-size:12px}
+  .mc{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="hwrap">
+    <h1>小学生バレーボール 5年の部<small>予選リーグ・決勝トーナメント</small></h1>
+    <nav id="nav">
+      <button data-tab="draw" class="on">① 抽選</button>
+      <button data-tab="sched">② 試合表・結果入力</button>
+      <button data-tab="table">③ 星取表・順位</button>
+      <button data-tab="final">④ 決勝トーナメント</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- 抽選 -->
+  <section class="panel on" id="p-draw">
+    <h2>抽選結果の入力</h2>
+    <div class="card">
+      <p class="note" style="margin-top:0">当日の抽選で決まった番号（あ〜か）にチームを割り当ててください。入力内容はこのブラウザに自動保存されます。</p>
+      <div class="drawgrid" id="drawgrid"></div>
+      <div class="row" style="margin-top:8px">
+        <span id="drawstatus" class="note"></span>
+      </div>
+    </div>
+    <div class="row noprint" style="margin-bottom:16px">
+      <button class="btn" id="btnRandom">ランダムに割り当て（練習用）</button>
+      <button class="btn" id="btnClearDraw">5年の割り当てをクリア</button>
+    </div>
+
+    <h2>6年の部 抽選結果の入力（試合順の表示用）</h2>
+    <div class="card">
+      <p class="note" style="margin-top:0">試合順に6年の部の試合が混ざるため、①〜⑨の割り当てだけ入力できます（6年の部の点数・順位は管理しません）。シード：①新南陽JVC・④櫛浜。</p>
+      <div class="drawgrid three" id="drawgrid6"></div>
+      <div class="row" style="margin-top:8px"><span id="drawstatus6" class="note"></span></div>
+    </div>
+
+    <details class="card noprint">
+      <summary>参加チーム名の編集</summary>
+      <p class="note">チーム名を変えると、試合表や星取表の表示にも反映されます。</p>
+      <b>5年の部</b>
+      <div class="teamedit" id="teamedit"></div>
+      <b style="display:block;margin-top:10px">6年の部</b>
+      <div class="teamedit" id="teamedit6"></div>
+    </details>
+
+    <h2>大会ルール（5年の部）</h2>
+    <div class="card note">
+      <ul style="margin:0;padding-left:20px">
+        <li>21点2セットマッチ（デュースあり）。セットが1-1の場合は得失点差で勝敗を決める。</li>
+        <li>予選リーグの順位：①勝敗差 → ②得失セット差 → ③得失点差 → ④直接対決</li>
+        <li>各ブロックの上位2チームが決勝トーナメントへ進む（A1位 vs B2位、B1位 vs A2位）。</li>
+        <li>トーナメントで同一になった場合は、選手による6人勝ち抜きジャンケンで勝敗を決める。</li>
+      </ul>
+    </div>
+
+    <div class="row noprint" style="margin-top:24px">
+      <button class="btn danger" id="btnReset">すべてのデータを消去</button>
+      <button class="btn" id="btnPrint">印刷</button>
+    </div>
+  </section>
+
+  <!-- 試合表 -->
+  <section class="panel" id="p-sched">
+    <h2>試合順（A・B・Cコート）</h2>
+    <p class="note">点数を入力すると、星取表と決勝トーナメントに自動で反映されます。グレーの点線枠は6年の部の試合です（表示のみ）。</p>
+    <div id="schedule"></div>
+  </section>
+
+  <!-- 星取表 -->
+  <section class="panel" id="p-table">
+    <h2>5年の部 予選Aブロック</h2>
+    <div id="tblA"></div>
+    <h2>5年の部 予選Bブロック</h2>
+    <div id="tblB"></div>
+    <p class="note">セット差：総得セット数－総失セット数　／　得失点差：総得点－総失点</p>
+    <div class="noprint">
+      <h2>速報テキスト</h2>
+      <p class="note">LINEなどに貼り付けて共有できます。</p>
+      <textarea id="summary" readonly></textarea>
+      <div class="row" style="margin-top:6px"><button class="btn primary" id="btnCopy">コピー</button><span id="copied" class="note"></span></div>
+    </div>
+  </section>
+
+  <!-- 決勝 -->
+  <section class="panel" id="p-final">
+    <h2>5年の部 決勝トーナメント（Cコート）</h2>
+    <div class="card bracket" id="bracket"></div>
+    <h2>最終結果</h2>
+    <div class="podium" id="podium"></div>
+  </section>
+</main>
+
+<div class="dlg" id="dlg" hidden>
+  <div class="dlgbox" role="dialog" aria-modal="true">
+    <p id="dlgmsg" style="margin-top:0"></p>
+    <div class="row"><button class="btn" id="dlgNo">キャンセル</button><button class="btn primary" id="dlgYes">OK</button></div>
+  </div>
+</div>
+
+<script>
+const KANA = ['あ','い','う','え','お','か'];
+const BLOCKS = { A:['あ','い','う'], B:['え','お','か'] };
+const DEFAULT_TEAMS = ['菊川','秋月','花岡','新南陽','櫛浜','桜木'];
+
+// 予選リーグ（試合順の表より）
+const LEAGUE = [
+  { id:'A1', block:'A', court:'A', slot:2, h:'あ', a:'い', ref:'う' },
+  { id:'A2', block:'A', court:'A', slot:4, h:'い', a:'う', ref:'あ' },
+  { id:'A3', block:'A', court:'A', slot:5, h:'あ', a:'う', ref:'い' },
+  { id:'B1', block:'B', court:'C', slot:2, h:'え', a:'お', ref:'か' },
+  { id:'B2', block:'B', court:'C', slot:4, h:'お', a:'か', ref:'え' },
+  { id:'B3', block:'B', court:'C', slot:5, h:'え', a:'か', ref:'お' },
+];
+// 決勝トーナメント（Cコート）
+const FINALS = [
+  { id:'C6', label:'C-6', court:'C', slot:6, h:{rank:['A',1]}, a:{rank:['B',2]}, ref:{rank:['A',3]} },
+  { id:'C7', label:'C-7', court:'C', slot:7, h:{rank:['B',1]}, a:{rank:['A',2]}, ref:{rank:['B',3]} },
+  { id:'C8', label:'C-8 決勝', court:'C', slot:8, h:{win:'C6'}, a:{win:'C7'}, ref:{lose:['C6','C7']} },
+];
+const ALL = [...LEAGUE, ...FINALS];
+// 6年の部（割り当てのみ管理・試合順の表示用）
+const MARU = ['','①','②','③','④','⑤','⑥','⑦','⑧','⑨'];
+const NUMS6 = [1,2,3,4,5,6,7,8,9];
+const BLOCKS6 = { A:[1,2,3], B:[4,5,6], C:[7,8,9] };
+const DEFAULT_TEAMS6 = ['新南陽JVC','櫛浜','鹿野','菊川','桜木','新南陽','沼城','末武JVC','花岡JSC'];
+const SEED6 = { 1:'新南陽JVC', 4:'櫛浜' };
+const SIX = [
+  { court:'A', slot:1, h:1, a:2, ref:3 },
+  { court:'A', slot:3, h:2, a:3, ref:1 },
+  { court:'A', slot:6, text:'決勝T A-6', ref:'6A3位' },
+  { court:'A', slot:7, text:'決勝T A-7', ref:'A-6敗' },
+  { court:'A', slot:8, text:'決勝T A-8（決勝）', ref:'A-7/B-7敗' },
+  { court:'B', slot:1, h:4, a:5, ref:6 },
+  { court:'B', slot:2, h:5, a:6, ref:4 },
+  { court:'B', slot:3, h:4, a:6, ref:5 }, // 原本は審判④（対戦チーム）となっているため⑤と判断
+  { court:'B', slot:4, h:1, a:3, ref:2 },
+  { court:'B', slot:5, h:7, a:9, ref:8 },
+  { court:'B', slot:6, text:'決勝T B-6', ref:'6B3位/C3位' },
+  { court:'B', slot:7, text:'決勝T B-7', ref:'B-6敗' },
+  { court:'C', slot:1, h:7, a:8, ref:9 },
+  { court:'C', slot:3, h:8, a:9, ref:7 },
+];
+const COURTS = [['A','Aコート（長笛）'],['B','Bコート（短笛）'],['C','Cコート（長笛）']];
+
+const STORE = 'volley5-v1';
+let state = load();
+
+function blank(){
+  const scores = {};
+  ALL.forEach(m => scores[m.id] = [['',''],['','']]);
+  return { teams:[...DEFAULT_TEAMS], assign:Object.fromEntries(KANA.map(k=>[k,''])),
+    teams6:[...DEFAULT_TEAMS6], assign6:Object.fromEntries(NUMS6.map(n=>[n, SEED6[n] || ''])),
+    scores, pick:{}, order:{} };
+}
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORE));
+    if(s && s.scores){ const b = blank(); return {...b, ...s, scores:{...b.scores, ...s.scores}}; }
+  }catch(e){}
+  return blank();
+}
+function save(){ try{ localStorage.setItem(STORE, JSON.stringify(state)); }catch(e){} }
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = v => (v === '' || v == null || isNaN(+v)) ? null : +v;
+const sign = n => n > 0 ? '+' + n : String(n);
+const teamName = code => state.assign[code] || '';
+const disp = code => teamName(code) ? `${code} ${teamName(code)}` : code;
+const disp6 = n => state.assign6[n] ? `${MARU[n]} ${state.assign6[n]}` : MARU[n];
+
+/* ---------- 試合結果の判定 ---------- */
+function setWarn(x, y){
+  if(x == null || y == null) return '';
+  if(x === y) return '同点のセットがあります';
+  const hi = Math.max(x,y), lo = Math.min(x,y);
+  if(hi < 21) return '21点に達していません';
+  if(hi === 21 && lo > 19) return 'デュースの点数を確認してください';
+  if(hi > 21 && hi - lo !== 2) return 'デュース後は2点差で終了です';
+  return '';
+}
+function result(id){
+  const sets = state.scores[id].map(([x,y]) => [num(x), num(y)]);
+  const warns = sets.map(([x,y]) => setWarn(x,y)).filter(Boolean);
+  const done = sets.every(([x,y]) => x != null && y != null && x !== y);
+  let hs=0, as=0, hp=0, ap=0;
+  sets.forEach(([x,y]) => { if(x==null||y==null) return; hp+=x; ap+=y; if(x>y) hs++; else if(y>x) as++; });
+  if(!done) return { done:false, hs, as, hp, ap, warns };
+  let winner = hs > as ? 'h' : as > hs ? 'a' : hp > ap ? 'h' : ap > hp ? 'a' : (state.pick[id] || null);
+  return { done:true, hs, as, hp, ap, winner, needPick: hs === as && hp === ap, warns, sets };
+}
+
+/* ---------- 順位計算 ---------- */
+function standings(b){
+  const codes = BLOCKS[b];
+  const rows = Object.fromEntries(codes.map(c => [c, {code:c, w:0, l:0, sf:0, sa:0, pf:0, pa:0}]));
+  const h2h = {};
+  let decided = 0;
+  LEAGUE.filter(m => m.block === b).forEach(m => {
+    const r = result(m.id);
+    if(!r.done || !r.winner) return;
+    decided++;
+    const H = rows[m.h], A = rows[m.a];
+    H.sf += r.hs; H.sa += r.as; A.sf += r.as; A.sa += r.hs;
+    H.pf += r.hp; H.pa += r.ap; A.pf += r.ap; A.pa += r.hp;
+    const [w, l] = r.winner === 'h' ? [m.h, m.a] : [m.a, m.h];
+    rows[w].w++; rows[l].l++;
+    h2h[w + l] = 1; h2h[l + w] = -1;
+  });
+  const key = r => [r.w - r.l, r.sf - r.sa, r.pf - r.pa];
+  const cmpKey = (x, y) => { const a = key(x), c = key(y); for(let i=0;i<3;i++) if(a[i] !== c[i]) return c[i] - a[i]; return 0; };
+  let list = Object.values(rows).sort((x, y) => cmpKey(x, y) || (h2h[y.code + x.code] || 0) - (h2h[x.code + y.code] || 0) || 0);
+
+  // 直接対決でも決まらない（3チーム完全同率）場合は手動で順位指定
+  let unresolved = false;
+  const complete = decided === 3;
+  if(complete){
+    const allSame = list.every(r => cmpKey(r, list[0]) === 0);
+    if(allSame){
+      const ord = state.order[b];
+      if(ord && ord.length === 3 && new Set(ord).size === 3 && ord.every(c => codes.includes(c))){
+        list = ord.map(c => rows[c]);
+      } else unresolved = true;
+    }
+  }
+  list.forEach((r, i) => r.rank = i + 1);
+  return { list, rows, complete, unresolved };
+}
+function rankCode(b, n){
+  const s = standings(b);
+  if(!s.complete || s.unresolved) return null;
+  return s.list[n - 1].code;
+}
+
+/* ---------- 決勝の対戦相手解決 ---------- */
+function sideOf(spec){
+  if(spec.rank){
+    const [b, n] = spec.rank, c = rankCode(b, n);
+    return { label:`${b}${n}位`, code:c, name: c ? (teamName(c) || c) : '' };
+  }
+  if(spec.win){
+    const s = winnerOf(spec.win);
+    return { label:`${spec.win.replace('C','C-')}勝者`, code:s && s.code, name: s ? s.name : '' };
+  }
+  if(spec.lose){
+    const ls = spec.lose.map(loserOf);
+    return { label:'C-6敗/C-7敗', name: ls.every(Boolean) ? ls.map(x => x.name).join('・') : '' };
+  }
+}
+function matchSides(m){
+  if(m.block) return { h:{label:m.h, code:m.h, name:disp(m.h)}, a:{label:m.a, code:m.a, name:disp(m.a)}, ref:{label:m.ref, name:disp(m.ref)} };
+  return { h:sideOf(m.h), a:sideOf(m.a), ref:sideOf(m.ref) };
+}
+function winnerOf(id){ const m = FINALS.find(f => f.id === id), r = result(id); if(!r.done || !r.winner) return null; const s = matchSides(m); return s[r.winner].name ? s[r.winner] : null; }
+function loserOf(id){ const m = FINALS.find(f => f.id === id), r = result(id); if(!r.done || !r.winner) return null; const s = matchSides(m); const k = r.winner === 'h' ? 'a' : 'h'; return s[k].name ? s[k] : null; }
+
+/* ---------- 抽選画面 ---------- */
+const DIVS = {
+  5:{ grid:'drawgrid', status:'drawstatus', edit:'teamedit', blocks:BLOCKS, keys:KANA, label:k => k, cls:'', teams:'teams', assign:'assign' },
+  6:{ grid:'drawgrid6', status:'drawstatus6', edit:'teamedit6', blocks:BLOCKS6, keys:NUMS6, label:n => MARU[n], cls:'six', teams:'teams6', assign:'assign6' },
+};
+function renderDraw(){ renderDrawDiv(5); renderDrawDiv(6); markDups(); }
+function renderDrawDiv(d){
+  const D = DIVS[d], teams = state[D.teams], assign = state[D.assign];
+  const g = document.getElementById(D.grid);
+  g.innerHTML = Object.entries(D.blocks).map(([b, keys]) => `
+    <div class="drawblock"><h3>${b}ブロック</h3>
+    ${keys.map(k => `<div class="drawrow"><span class="kana ${D.cls}">${D.label(k)}</span>
+      <select data-k="${k}"><option value="">― 未定 ―</option>
+      ${teams.map(t => `<option ${assign[k] === t ? 'selected' : ''}>${esc(t)}</option>`).join('')}
+      </select></div>`).join('')}
+    </div>`).join('');
+  g.querySelectorAll('select').forEach(s => s.onchange = () => { assign[s.dataset.k] = s.value; save(); afterAssign(); });
+
+  const te = document.getElementById(D.edit);
+  te.innerHTML = teams.map((t, i) => `<input type="text" data-i="${i}" value="${esc(t)}">`).join('');
+  te.querySelectorAll('input').forEach(inp => inp.onchange = () => {
+    const i = +inp.dataset.i, old = teams[i], v = inp.value.trim() || old;
+    teams[i] = v;
+    D.keys.forEach(k => { if(assign[k] === old) assign[k] = v; });
+    save(); renderDrawDiv(d); afterAssign();
+  });
+}
+function markDups(){
+  [5, 6].forEach(d => {
+    const D = DIVS[d], assign = state[D.assign], n = D.keys.length;
+    const vals = D.keys.map(k => assign[k]).filter(Boolean);
+    document.querySelectorAll(`#${D.grid} select`).forEach(s => s.classList.toggle('dup', !!s.value && vals.filter(v => v === s.value).length > 1));
+    const dup = vals.length !== new Set(vals).size;
+    document.getElementById(D.status).innerHTML = dup
+      ? '<span style="color:var(--warn)">⚠ 同じチームが複数の番号に割り当てられています</span>'
+      : vals.length === n ? `<span style="color:var(--ok)">✔ ${n}チームの割り当てが完了しました。</span>`
+      : `割り当て済み ${vals.length} / ${n}`;
+  });
+}
+function afterAssign(){ markDups(); renderSchedule(); renderDerived(); }
+
+/* ---------- 試合表 ---------- */
+function matchCard(m){
+  const sc = state.scores[m.id];
+  const title = m.block ? `${m.court}コート 5年 ${m.block}ブロック` : `${m.court}コート 5年 決勝 ${m.label}`;
+  return `<div class="mc ${m.block ? '' : 'final'}" id="mc-${m.id}">
+    <div class="mtitle"><span>${title}</span><span class="ref">審判：<span id="ref-${m.id}"></span></span></div>
+    <div class="mteams">
+      <span class="tn h" id="nh-${m.id}"></span>
+      <input inputmode="numeric" data-m="${m.id}" data-s="0" data-t="0" value="${esc(sc[0][0])}" aria-label="1セット目">
+      <input inputmode="numeric" data-m="${m.id}" data-s="0" data-t="1" value="${esc(sc[0][1])}" aria-label="1セット目">
+      <span class="tn" id="na-${m.id}"></span>
+      <span class="sl">2セット目</span>
+      <input inputmode="numeric" data-m="${m.id}" data-s="1" data-t="0" value="${esc(sc[1][0])}" aria-label="2セット目">
+      <input inputmode="numeric" data-m="${m.id}" data-s="1" data-t="1" value="${esc(sc[1][1])}" aria-label="2セット目">
+      <span></span>
+    </div>
+    <div class="res" id="res-${m.id}"></div>
+  </div>`;
+}
+function sixCard(x){
+  const blk = x.h ? Object.keys(BLOCKS6).find(b => BLOCKS6[b].includes(x.h)) : '';
+  const ref = typeof x.ref === 'number' ? disp6(x.ref) : x.ref;
+  const body = x.text ? esc(x.text) : `${esc(disp6(x.h))}　－　${esc(disp6(x.a))}`;
+  return `<div class="mc six"><div class="mtitle"><span>${x.court}コート 6年${blk ? ' ' + blk + 'ブロック' : ''}</span><span>審判：${esc(ref)}</span></div><div class="sixm">${body}</div></div>`;
+}
+function renderSchedule(){
+  const el = document.getElementById('schedule');
+  let html = `<div class="slot"><div class="slothead empty"></div>${COURTS.map(c => `<div class="colhead">${c[1]}</div>`).join('')}</div>`;
+  for(let slot = 1; slot <= 8; slot++){
+    const cell = court => {
+      const m = ALL.find(x => x.court === court && x.slot === slot);
+      if(m) return matchCard(m);
+      const x = SIX.find(x => x.court === court && x.slot === slot);
+      return x ? sixCard(x) : `<div class="mc other blank">―</div>`;
+    };
+    html += `<div class="slot"><div class="slothead">第${slot}試合</div>${COURTS.map(c => cell(c[0])).join('')}</div>`;
+  }
+  el.innerHTML = html + '<p class="note">※試合順およびコートは、進行により変更の可能性あり</p>';
+  el.querySelectorAll('input[data-m]').forEach(inp => inp.oninput = () => {
+    const v = inp.value.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0)).replace(/[^0-9]/g, '');
+    if(v !== inp.value) inp.value = v;
+    state.scores[inp.dataset.m][+inp.dataset.s][+inp.dataset.t] = v;
+    save(); renderDerived();
+  });
+}
+function renderMatchStatus(m){
+  const s = matchSides(m), r = result(m.id);
+  const nh = document.getElementById('nh-' + m.id), na = document.getElementById('na-' + m.id);
+  nh.textContent = s.h.name || s.h.label; na.textContent = s.a.name || s.a.label;
+  nh.title = nh.textContent; na.title = na.textContent;
+  nh.className = 'tn h' + (r.done && r.winner ? (r.winner === 'h' ? ' w' : ' l') : '');
+  na.className = 'tn' + (r.done && r.winner ? (r.winner === 'a' ? ' w' : ' l') : '');
+  document.getElementById('ref-' + m.id).textContent = s.ref.name || s.ref.label;
+  document.getElementById('mc-' + m.id).classList.toggle('done', !!(r.done && r.winner));
+
+  let html = '';
+  if(r.warns.length) html += `<div class="warn">⚠ ${[...new Set(r.warns)].join('／')}</div>`;
+  if(r.done){
+    const wn = r.winner ? (s[r.winner].name || s[r.winner].label) : '';
+    html += `セット ${r.hs}-${r.as}　得点 ${r.hp}-${r.ap}`;
+    if(r.hs === r.as && !r.needPick) html += '（1-1・得失点差で決定）';
+    if(r.needPick){
+      html += `<div class="warn">セット1-1・得点も同じです。勝者を選択：
+        <label><input type="radio" name="pk-${m.id}" value="h" ${state.pick[m.id]==='h'?'checked':''}>${esc(s.h.name||s.h.label)}</label>
+        <label><input type="radio" name="pk-${m.id}" value="a" ${state.pick[m.id]==='a'?'checked':''}>${esc(s.a.name||s.a.label)}</label></div>`;
+    }
+    if(wn) html += `　<span class="w">勝：${esc(wn)}</span>`;
+  }
+  const res = document.getElementById('res-' + m.id);
+  res.innerHTML = html;
+  res.querySelectorAll('input[type=radio]').forEach(rd => rd.onchange = () => { state.pick[m.id] = rd.value; save(); renderDerived(); });
+}
+
+/* ---------- 星取表 ---------- */
+function renderTable(b){
+  const st = standings(b), codes = BLOCKS[b];
+  const cell = (rowC, colC) => {
+    if(rowC === colC) return '<td class="diag"></td>';
+    const m = LEAGUE.find(x => (x.h === rowC && x.a === colC) || (x.a === rowC && x.h === colC));
+    const r = result(m.id);
+    if(!r.done) return `<td class="cellsets">第${m.slot}試合</td>`;
+    const me = m.h === rowC ? 'h' : 'a';
+    const myS = me === 'h' ? r.hs : r.as, opS = me === 'h' ? r.as : r.hs;
+    const sets = r.sets.map(([x,y]) => me === 'h' ? `${x}-${y}` : `${y}-${x}`).join('<br>');
+    const won = r.winner === me;
+    return `<td><div class="cellres ${won ? 'w' : ''}">${r.winner ? (won ? '○' : '●') : '?'} ${myS}-${opS}</div><div class="cellsets">${sets}</div></td>`;
+  };
+  let html = `<div class="tblwrap"><table class="st"><tr><th class="nm">チーム名</th>${codes.map(c => `<th>${esc(disp(c))}</th>`).join('')}<th>勝敗</th><th>セット差</th><th>得失点差</th><th>順位</th></tr>`;
+  codes.forEach(c => {
+    const r = st.rows[c], adv = st.complete && !st.unresolved && r.rank <= 2;
+    html += `<tr class="${adv ? 'adv' : ''}"><td class="nm">${esc(disp(c))}</td>${codes.map(o => cell(c, o)).join('')}
+      <td>${r.w} - ${r.l}</td>
+      <td>${r.sf} - ${r.sa} = ${sign(r.sf - r.sa)}</td>
+      <td>${r.pf} - ${r.pa} = ${sign(r.pf - r.pa)}</td>
+      <td class="rank ${adv ? 'adv' : ''}">${st.complete && !st.unresolved ? r.rank : (st.complete ? '?' : '')}</td></tr>`;
+  });
+  html += '</table></div>';
+  if(!st.complete) html += '<p class="note">※ 全3試合が終わると順位が確定します。</p>';
+  else if(st.unresolved || state.order[b]){
+    const ord = state.order[b] || ['', '', ''];
+    html += `<div class="tiepick card"><b style="color:var(--warn)">3チームが勝敗・セット差・得失点差すべて同じで、直接対決でも決まりません。</b><br>大会本部の判断で順位を指定してください：
+      ${[0,1,2].map(i => `${i+1}位 <select data-b="${b}" data-i="${i}"><option value="">―</option>${codes.map(c => `<option value="${c}" ${ord[i]===c?'selected':''}>${esc(disp(c))}</option>`).join('')}</select>`).join(' ')}
+      <button class="btn" data-clear="${b}">指定を解除</button></div>`;
+  }
+  const el = document.getElementById('tbl' + b);
+  el.innerHTML = html;
+  el.querySelectorAll('select[data-b]').forEach(s => s.onchange = () => {
+    const o = state.order[b] || ['', '', '']; o[+s.dataset.i] = s.value; state.order[b] = o; save(); renderDerived();
+  });
+  el.querySelectorAll('[data-clear]').forEach(btn => btn.onclick = () => { delete state.order[b]; save(); renderDerived(); });
+}
+
+/* ---------- トーナメント表 ---------- */
+function renderBracket(){
+  const sides = Object.fromEntries(FINALS.map(m => [m.id, matchSides(m)]));
+  const res = Object.fromEntries(FINALS.map(m => [m.id, result(m.id)]));
+  const won = (id, k) => res[id].done && res[id].winner === k ? 'won' : '';
+  const leaves = [
+    { x:90,  s:sides.C6.h }, { x:270, s:sides.C6.a },
+    { x:450, s:sides.C7.h }, { x:630, s:sides.C7.a },
+  ];
+  const score = id => { const r = res[id]; return r.done ? `${r.hs}-${r.as}（${r.hp}-${r.ap}）` : ''; };
+  const W = 720;
+  let svg = `<svg viewBox="0 0 ${W} 330" role="img" aria-label="決勝トーナメント表">
+    <path class="ln ${won('C8','h')}" d="M90 250V170H180V90H360"/>
+    <path class="ln ${won('C8','a')}" d="M630 250V170H540V90H360"/>
+    <path class="ln ${won('C6','h')}" d="M90 250V170H180"/>
+    <path class="ln ${won('C6','a')}" d="M270 250V170H180"/>
+    <path class="ln ${won('C7','h')}" d="M450 250V170H540"/>
+    <path class="ln ${won('C7','a')}" d="M630 250V170H540"/>
+    <path class="ln ${won('C6','h') ? '' : ''}" d="M180 170V90"/>
+    <path class="ln ${res.C8.done && res.C8.winner ? 'won' : ''}" d="M360 90V30"/>
+    <text x="360" y="22" text-anchor="middle" font-size="16" font-weight="bold">${esc(winnerOf('C8') ? '優勝 ' + winnerOf('C8').name : '')}</text>
+    <text x="360" y="78" text-anchor="middle" font-size="14" font-weight="bold">C-8 決勝</text>
+    <text x="360" y="110" text-anchor="middle" font-size="12">${score('C8')}</text>
+    <text x="360" y="126" text-anchor="middle" font-size="11" opacity=".7">審判 ${esc(sides.C8.ref.name || sides.C8.ref.label)}</text>
+    <text x="180" y="158" text-anchor="middle" font-size="13" font-weight="bold">C-6</text>
+    <text x="180" y="190" text-anchor="middle" font-size="12">${score('C6')}</text>
+    <text x="180" y="206" text-anchor="middle" font-size="11" opacity=".7">審判 ${esc(sides.C6.ref.name || sides.C6.ref.label)}</text>
+    <text x="540" y="158" text-anchor="middle" font-size="13" font-weight="bold">C-7</text>
+    <text x="540" y="190" text-anchor="middle" font-size="12">${score('C7')}</text>
+    <text x="540" y="206" text-anchor="middle" font-size="11" opacity=".7">審判 ${esc(sides.C7.ref.name || sides.C7.ref.label)}</text>
+    ${leaves.map(l => `
+      <text x="${l.x}" y="275" text-anchor="middle" font-size="12" opacity=".7">${l.s.label}</text>
+      <text x="${l.x}" y="298" text-anchor="middle" font-size="16" font-weight="bold">${esc(l.s.name || '（未定）')}</text>`).join('')}
+  </svg>`;
+  document.getElementById('bracket').innerHTML = svg + '<p class="note" style="text-align:center">※ 決勝トーナメントの点数は「② 試合表」の第6〜8試合に入力します。</p>';
+
+  const w = winnerOf('C8'), l = loserOf('C8'), t1 = loserOf('C6'), t2 = loserOf('C7');
+  document.getElementById('podium').innerHTML = `
+    <div class="gold"><b>優勝</b><span>${esc(w ? w.name : '―')}</span></div>
+    <div><b>準優勝</b><span>${esc(l ? l.name : '―')}</span></div>
+    <div><b>3位</b><span>${esc(t1 ? t1.name : '―')}</span></div>
+    <div><b>3位</b><span>${esc(t2 ? t2.name : '―')}</span></div>`;
+}
+
+/* ---------- 速報テキスト ---------- */
+function renderSummary(){
+  const lines = ['【5年の部 試合結果】'];
+  const line = m => {
+    const s = matchSides(m), r = result(m.id);
+    const hn = s.h.name || s.h.label, an = s.a.name || s.a.label;
+    if(!r.done) return `第${m.slot}試合 ${hn} vs ${an}　（未）`;
+    const sets = r.sets.map(([x,y]) => `${x}-${y}`).join(', ');
+    return `第${m.slot}試合 ${hn} ${r.hs}-${r.as} ${an}（${sets}）${r.winner ? ' ○' + (s[r.winner].name || s[r.winner].label) : ''}`;
+  };
+  ['A','B'].forEach(b => {
+    lines.push('', `■ ${b}ブロック`);
+    LEAGUE.filter(m => m.block === b).forEach(m => lines.push(line(m)));
+    const st = standings(b);
+    if(st.complete && !st.unresolved) lines.push('順位：' + st.list.map(r => `${r.rank}位 ${teamName(r.code) || r.code}`).join(' / '));
+  });
+  lines.push('', '■ 決勝トーナメント');
+  FINALS.forEach(m => lines.push(line(m).replace(`第${m.slot}試合`, m.label)));
+  const w = winnerOf('C8');
+  if(w) lines.push('', `優勝：${w.name}`, `準優勝：${loserOf('C8').name}`, `3位：${loserOf('C6').name}・${loserOf('C7').name}`);
+  document.getElementById('summary').value = lines.join('\n');
+}
+
+function renderDerived(){
+  ALL.forEach(renderMatchStatus);
+  renderTable('A'); renderTable('B');
+  renderBracket(); renderSummary();
+}
+
+/* ---------- イベント ---------- */
+document.querySelectorAll('#nav button').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b === btn));
+  document.querySelectorAll('section.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + btn.dataset.tab));
+  window.scrollTo(0, 0);
+});
+// confirm() はスマホのアプリ内表示などで使えないため、画面内のダイアログで確認する
+function ask(msg, yes){
+  const d = document.getElementById('dlg');
+  document.getElementById('dlgmsg').textContent = msg;
+  d.hidden = false;
+  document.getElementById('dlgYes').onclick = () => { d.hidden = true; yes(); };
+  document.getElementById('dlgNo').onclick = () => { d.hidden = true; };
+}
+document.getElementById('btnRandom').onclick = () => {
+  const run = () => {
+    const t = [...state.teams];
+    for(let i = t.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [t[i], t[j]] = [t[j], t[i]]; }
+    KANA.forEach((k, i) => state.assign[k] = t[i] || '');
+    save(); renderDraw(); afterAssign();
+  };
+  KANA.some(k => state.assign[k]) ? ask('現在の5年の部の割り当てを上書きします。よろしいですか？', run) : run();
+};
+document.getElementById('btnClearDraw').onclick = () => ask('5年の部の割り当てをクリアしますか？（点数は残ります）', () => {
+  KANA.forEach(k => state.assign[k] = ''); save(); renderDraw(); afterAssign();
+});
+document.getElementById('btnReset').onclick = () => ask('抽選結果と全試合の点数を消去します。元に戻せません。よろしいですか？', () => {
+  const teams = state.teams, teams6 = state.teams6; state = blank(); state.teams = teams; state.teams6 = teams6; save(); renderAll();
+});
+// 埋め込み表示（公開ページ）では印刷ダイアログが開けないため非表示
+const btnPrint = document.getElementById('btnPrint');
+if(window.self !== window.top) btnPrint.hidden = true;
+btnPrint.onclick = () => window.print();
+document.getElementById('btnCopy').onclick = async () => {
+  const ta = document.getElementById('summary');
+  try{ await navigator.clipboard.writeText(ta.value); }catch(e){ ta.select(); document.execCommand('copy'); }
+  document.getElementById('copied').textContent = 'コピーしました';
+  setTimeout(() => document.getElementById('copied').textContent = '', 2000);
+};
+
+function renderAll(){ renderDraw(); renderSchedule(); renderDerived(); }
+renderAll();
+</script>
+</body>
+</html>
